@@ -3,3 +3,4 @@ __pycache__/
 *.pyo
 .agents/
 skills-lock.json
+CONTEXT_CLAUDE_CODE.md
