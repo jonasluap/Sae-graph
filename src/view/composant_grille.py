@@ -59,7 +59,7 @@ class ComposantGrille(QWidget):
     def _on_text_edited(self, ligne: int, colonne: int, text: str) -> None:
         """Slot interne appelé quand le joueur tape un chiffre."""
         valeur = int(text) if text.isdigit() else 0
-        self.saisie_utilisateur.emit(ligne, colonne, valeur)
+        self.saisie_utilisateur.emit(colonne, ligne, valeur)
 
     def draw_values(self, donnees: dict) -> None:
         """
