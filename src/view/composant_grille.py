@@ -1,92 +1,103 @@
-from PyQt6.QtWidgets import QWidget
-from PyQt6.QtGui import QPainter, QPen, QColor, QFont
-from PyQt6.QtCore import Qt
+# src/view/composant_grille.py
+from PyQt6.QtWidgets import QWidget, QGridLayout, QLineEdit, QSizePolicy
+from PyQt6.QtCore import pyqtSignal, Qt
+from PyQt6.QtGui import QIntValidator, QFont
+
+class CaseWidget(QLineEdit):
+    """
+    Widget représentant une case individuelle à l'écran.
+    Hérite de QLineEdit pour permettre la saisie. Jonas pourra utiliser
+    les QSS (Qt Style Sheets) sur ce widget pour modifier les bordures.
+    """
+    def __init__(self, ligne: int, colonne: int):
+        super().__init__()
+        self.ligne = ligne
+        self.colonne = colonne
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setMaxLength(2) # Permet des tailles de motifs jusqu'à 99
+        self.setValidator(QIntValidator(1, 99))
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        
+        # Style de base, Jonas écrasera ceci pour les bordures épaisses
+        self.setStyleSheet("border: 1px solid gray; background-color: white;")
+        font = QFont("Arial", 16)
+        self.setFont(font)
 
 class ComposantGrille(QWidget):
     """
-    Ce widget personnalisé prend en charge tout le dessin de la grille du Néonaure.
-    Il intercepte les clics de souris et les saisies clavier, puis délègue le dessin 
-    à des sous-fonctions bien spécifiques pour cloisonner le travail de l'équipe.
+    Composant IHM principal affichant la grille.
+    Il ne modifie jamais le modèle directement. Il émet un signal au contrôleur.
     """
-    def __init__(self, parent=None):
+    # Signal émis lors d'une saisie: (ligne, colonne, nouvelle_valeur)
+    # 0 représente une case vidée
+    saisie_utilisateur = pyqtSignal(int, int, int)
+
+    def __init__(self, rows: int = 8, cols: int = 8, parent=None):
         super().__init__(parent)
-        
-        # Cette option permet au widget de capter les entrées clavier dès qu'on clique dessus.
-        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        
-        # Dimensions par défaut d'une grille classique de Néonaure.
-        self.nb_lignes = 8
-        self.nb_colonnes = 8
-        
-        # Variables de suivi de l'état du jeu qui seront mises à jour par le contrôleur.
-        self.case_selectionnee = None
-        self.valeurs_cases = {}
-        self.motifs = []
-        self.cases_en_erreur = []
+        self.rows = rows
+        self.cols = cols
+        self.widgets_cases = {}  # Dictionnaire pour accès rapide {(ligne, col): CaseWidget}
+        self._init_ui()
 
-    def paintEvent(self, event) -> None:
-        """
-        Cette méthode s'exécute automatiquement dès que l'interface a besoin d'être redessinée.
-        Pour éviter que Henry et toi ne vous marchiez sur les pieds lors des fusions de branches,
-        le dessin est découpé en quatre blocs autonomes.
-        """
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        
-        # Nous calculons la dimension idéale d'une case pour qu'elle reste carrée et 
-        # s'adapte dynamiquement si l'utilisateur redimensionne la fenêtre.
-        largeur_case = self.width() // self.nb_colonnes
-        hauteur_case = self.height() // self.nb_lignes
-        taille_case = min(largeur_case, hauteur_case)
-        
-        # --- ZONE DE TRAVAIL DE HENRY ---
-        # Henry s'occupera de coder le fond des cases, le quadrillage de base et les nombres.
-        self.dessiner_fond_et_grille_base(painter, taille_case)
-        self.dessiner_chiffres(painter, taille_case)
-        
-        # --- ZONE DE TRAVAIL DE JONAS (TOI) ---
-        # C'est ici que tu viendras ajouter tes méthodes visuelles à l'étape 3 et 4.
-        self.dessiner_bordures_motifs(painter, taille_case)
-        self.dessiner_surbrillance_erreurs(painter, taille_case)
-        
-        painter.end()
+    def _init_ui(self):
+        self.layout = QGridLayout()
+        self.layout.setSpacing(0) # Jonas gérera l'espacement/les bordures via le CSS
+        self.setLayout(self.layout)
+        self.draw_grid()
 
-    def dessiner_fond_et_grille_base(self, painter, taille_case) -> None:
-        """
-        [Zone Henry] Cette méthode dessinera les lignes grises classiques de la grille
-        et appliquera une couleur distinctive sur la case actuellement sélectionnée par le joueur.
-        """
-        # Henry complétera cette méthode lors de sa tâche IHM.
-        pass
+    def draw_grid(self) -> None:
+        """Génère la grille vide d'objets QLineEdit."""
+        for r in range(self.rows):
+            for c in range(self.cols):
+                cw = CaseWidget(r, c)
+                # Connexion de l'événement de saisie au slot interne
+                cw.textEdited.connect(lambda text, ligne=r, col=c: self._on_text_edited(ligne, col, text))
+                
+                self.layout.addWidget(cw, r, c)
+                self.widgets_cases[(r, c)] = cw
 
-    def dessiner_chiffres(self, painter, taille_case) -> None:
-        """
-        [Zone Henry] Cette fonction se chargera d'écrire les chiffres au centre de chaque case,
-        en appliquant éventuellement un style différent si le chiffre est fixé au départ ou saisi par le joueur.
-        """
-        # Henry lira le dictionnaire self.valeurs_cases pour afficher les éléments textuels.
-        pass
+    def _on_text_edited(self, ligne: int, colonne: int, text: str) -> None:
+        """Slot interne appelé quand le joueur tape un chiffre."""
+        valeur = int(text) if text.isdigit() else 0
+        self.saisie_utilisateur.emit(colonne, ligne, valeur)
 
-    def dessiner_bordures_motifs(self, painter, taille_case) -> None:
+    def draw_values(self, donnees: dict) -> None:
         """
-        [Zone Jonas] C'est ta méthode pour l'Étape 3. Elle consistera à parcourir la liste des motifs
-        pour tracer des bordures noires très épaisses tout autour, afin de bien les délimiter visuellement.
+        Met à jour l'affichage avec les données du modèle.
+        donnees: dictionnaire {(ligne, colonne): {"valeur": int, "fixee": bool}}
         """
-        # Tu coderas cette partie pour valider les contraintes de délimitation des motifs.
-        pass
+        for (r, c), info in donnees.items():
+            cw = self.widgets_cases.get((r, c))
+            if cw:
+                val = info["valeur"]
+                cw.blockSignals(True) # Évite de déclencher des signaux lors du rafraîchissement
+                
+                if val is not None and val > 0:
+                    cw.setText(str(val))
+                else:
+                    cw.clear()
+                    
+                cw.setReadOnly(info["fixee"])
+                
+                # Applique un style visuel différent si la case est fixée (indice visuel de base)
+                if info["fixee"]:
+                    cw.setStyleSheet(cw.styleSheet() + " font-weight: bold; color: black; background-color: #e0e0e0;")
+                    
+                cw.blockSignals(False)
 
-    def dessiner_surbrillance_erreurs(self, painter, taille_case) -> None:
+    def refresh_view(self) -> None:
         """
-        [Zone Jonas] C'est ta méthode pour l'Étape 4. Si une case est jugée en erreur par le modèle,
-        tu appliqueras ici un filtre ou un rectangle rouge translucide par-dessus pour avertir le joueur.
+        Méthode générique pour forcer le rafraîchissement global de l'interface.
+        Adel/Le contrôleur pourra l'appeler.
         """
-        # Tu coderas cette fonction en inspectant la liste self.cases_en_erreur.
-        pass
-
-    def mousePressEvent(self, event) -> None:
-        """
-        [Zone Henry] Capte les clics sur la grille pour identifier quelle case a été visée,
-        puis demande un rafraîchissement graphique de l'écran.
-        """
-        # Henry déterminera la ligne et la colonne cliquées à l'aide de la position du clic.
         self.update()
+
+    # --- MÉTHODES EXPOSÉES POUR JONAS ---
+    
+    def get_widget_at(self, ligne: int, colonne: int) -> CaseWidget | None:
+        """
+        Permet à Jonas de récupérer une case spécifique pour appliquer :
+        - Ses bordures épaisses (motifs)
+        - Ses fonds rouges (erreurs)
+        """
+        return self.widgets_cases.get((ligne, colonne))
