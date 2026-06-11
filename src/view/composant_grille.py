@@ -7,19 +7,21 @@ from PyQt6.QtGui import QIntValidator, QFont
 class CaseWidget(QLineEdit):
     """
     Widget représentant une case individuelle à l'écran.
-    La case reste un QLineEdit pour garder le travail d'Henry sur la saisie,
-    mais on garde quelques attributs simples pour que Jonas puisse appliquer
-    les bordures des motifs et les retours visuels d'erreur.
+
+    La case reste un QLineEdit pour garder le travail d'Henry sur la saisie.
+    Les attributs ajoutés servent seulement à gérer l'apparence :
+    bordures épaisses des motifs, cases fixées, et erreurs.
     """
+
     def __init__(self, ligne: int, colonne: int):
         super().__init__()
 
         self.ligne = ligne
         self.colonne = colonne
 
-        # Ces attributs sont uniquement visuels. Les vraies données restent dans le modèle.
         self.est_fixee = False
         self.est_en_erreur = False
+
         self.bordures = {
             "top": 1,
             "right": 1,
@@ -28,11 +30,12 @@ class CaseWidget(QLineEdit):
         }
 
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setMaxLength(2)  # Permet des tailles de motifs jusqu'à 99
+        self.setMaxLength(2)
         self.setValidator(QIntValidator(1, 99))
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
-        font = QFont("Arial", 16)
+        font = QFont("Segoe UI", 18)
+        font.setBold(True)
         self.setFont(font)
 
         self.appliquer_style()
@@ -40,34 +43,49 @@ class CaseWidget(QLineEdit):
     def appliquer_style(self) -> None:
         """
         Centralise le style d'une case.
-        La subtilité est importante : au lieu d'ajouter du CSS avec +=,
-        on reconstruit le style complet à chaque fois pour éviter les doublons.
+        On reconstruit le style complet à chaque changement pour éviter
+        d'empiler plusieurs styles contradictoires.
         """
-        fond = "#ffffff"
-        couleur_texte = "#2c3e50"
+        fond = "#160B35"
+        couleur_texte = "#F8FAFC"
+        bordure = "#6D5BA6"
         graisse = "normal"
 
         if self.est_fixee:
-            fond = "#e0e0e0"
-            couleur_texte = "#000000"
+            fond = "#241547"
+            couleur_texte = "#FFFFFF"
             graisse = "bold"
 
-        # L'erreur est prioritaire visuellement.
         if self.est_en_erreur:
-            fond = "#ffcccc"
+            fond = "#7F1D1D"
+            couleur_texte = "#FEE2E2"
+            bordure = "#FCA5A5"
+            graisse = "bold"
 
         self.setStyleSheet(f"""
             QLineEdit {{
                 background-color: {fond};
                 color: {couleur_texte};
                 font-weight: {graisse};
-                border-top: {self.bordures["top"]}px solid black;
-                border-right: {self.bordures["right"]}px solid black;
-                border-bottom: {self.bordures["bottom"]}px solid black;
-                border-left: {self.bordures["left"]}px solid black;
+                border-top: {self.bordures["top"]}px solid {bordure};
+                border-right: {self.bordures["right"]}px solid {bordure};
+                border-bottom: {self.bordures["bottom"]}px solid {bordure};
+                border-left: {self.bordures["left"]}px solid {bordure};
+                selection-background-color: #A5B4FC;
             }}
+
+            QLineEdit:hover {{
+                background-color: #1E1045;
+            }}
+
             QLineEdit:focus {{
-                background-color: #dff3ff;
+                background-color: #2E1A66;
+                color: #FFFFFF;
+            }}
+
+            QLineEdit:read-only {{
+                background-color: {fond};
+                color: {couleur_texte};
             }}
         """)
 
@@ -75,10 +93,13 @@ class CaseWidget(QLineEdit):
 class ComposantGrille(QWidget):
     """
     Composant IHM principal affichant la grille.
-    Il ne modifie jamais le modèle directement. Il émet un signal au contrôleur.
+
+    Il ne modifie jamais le modèle directement.
+    Quand l'utilisateur saisit une valeur, il émet un signal vers le contrôleur.
     """
-    # Signal émis lors d'une saisie : (ligne, colonne, nouvelle_valeur)
-    # 0 représente une case vidée.
+
+    # Signal émis lors d'une saisie : ligne, colonne, valeur.
+    # La valeur 0 représente une case vidée.
     saisie_utilisateur = pyqtSignal(int, int, int)
 
     def __init__(self, rows: int = 8, cols: int = 8, parent=None):
@@ -87,10 +108,7 @@ class ComposantGrille(QWidget):
         self.rows = rows
         self.cols = cols
 
-        # Accès rapide aux cases : {(ligne, colonne): CaseWidget}
         self.widgets_cases = {}
-
-        # Ces deux listes sont alimentées par le contrôleur.
         self.motifs = []
         self.cases_en_erreur = set()
 
@@ -98,83 +116,85 @@ class ComposantGrille(QWidget):
 
     def _init_ui(self) -> None:
         self.layout = QGridLayout()
-        self.layout.setSpacing(0)  # Les bordures sont gérées par le style des cases.
+        self.layout.setSpacing(0)
         self.setLayout(self.layout)
         self.draw_grid()
 
     def draw_grid(self) -> None:
-        """Génère la grille vide d'objets QLineEdit."""
+        """
+        Génère la grille vide avec des CaseWidget.
+        """
         for r in range(self.rows):
             for c in range(self.cols):
-                cw = CaseWidget(r, c)
+                case_widget = CaseWidget(r, c)
 
-                # On capture r et c avec des valeurs par défaut dans la lambda.
-                # Sinon Python utiliserait la dernière valeur de la boucle pour toutes les cases.
-                cw.textEdited.connect(
+                # Subtilité Python :
+                # ligne=r et col=c évitent que toutes les lambdas gardent
+                # la dernière valeur de la boucle.
+                case_widget.textEdited.connect(
                     lambda text, ligne=r, col=c: self._on_text_edited(ligne, col, text)
                 )
 
-                self.layout.addWidget(cw, r, c)
-                self.widgets_cases[(r, c)] = cw
+                self.layout.addWidget(case_widget, r, c)
+                self.widgets_cases[(r, c)] = case_widget
 
     def _on_text_edited(self, ligne: int, colonne: int, text: str) -> None:
         """
-        Slot interne appelé quand le joueur tape un chiffre.
-        La vue ne vérifie pas la validité métier : elle transmet simplement la saisie.
+        Appelé quand le joueur tape un chiffre.
+        La vue ne vérifie pas les règles du jeu : elle transmet seulement la saisie.
         """
         valeur = int(text) if text.isdigit() else 0
-
-        # Attention à l'ordre : le signal est déclaré en (ligne, colonne, valeur).
         self.saisie_utilisateur.emit(ligne, colonne, valeur)
 
     def draw_values(self, donnees: dict) -> None:
         """
         Met à jour l'affichage avec les données du modèle.
-        donnees : dictionnaire {(ligne, colonne): {"valeur": int, "fixee": bool}}
+
+        Format attendu :
+        {
+            (ligne, colonne): {"valeur": int, "fixee": bool}
+        }
         """
-        for (r, c), info in donnees.items():
-            cw = self.widgets_cases.get((r, c))
-            if cw is None:
+        for (ligne, colonne), info in donnees.items():
+            case_widget = self.widgets_cases.get((ligne, colonne))
+
+            if case_widget is None:
                 continue
 
-            val = info.get("valeur")
+            valeur = info.get("valeur")
             fixee = info.get("fixee", False)
 
-            cw.blockSignals(True)
+            case_widget.blockSignals(True)
 
-            if val is not None and val > 0:
-                cw.setText(str(val))
+            if valeur is not None and valeur > 0:
+                case_widget.setText(str(valeur))
             else:
-                cw.clear()
+                case_widget.clear()
 
-            cw.est_fixee = fixee
-            cw.setReadOnly(fixee)
-            cw.blockSignals(False)
+            case_widget.est_fixee = fixee
+            case_widget.setReadOnly(fixee)
 
-        # On remet le style après avoir modifié les valeurs,
-        # car une case peut être fixée, en erreur, ou située sur une bordure de motif.
+            case_widget.blockSignals(False)
+
         self.appliquer_styles_cases()
 
     def refresh_view(self) -> None:
         """
-        Méthode générique pour forcer le rafraîchissement global de l'interface.
-        Le contrôleur peut l'appeler après une modification du modèle.
+        Force le rafraîchissement global de l'interface.
         """
         self.update()
 
     def get_widget_at(self, ligne: int, colonne: int) -> CaseWidget | None:
         """
-        Permet de récupérer une case spécifique pour appliquer :
-        - les bordures épaisses des motifs ;
-        - les fonds rouges des erreurs.
+        Récupère une case précise de la grille.
         """
         return self.widgets_cases.get((ligne, colonne))
 
     def set_motifs(self, motifs: list) -> None:
         """
-        Reçoit la liste des motifs depuis le contrôleur.
-        La méthode accepte volontairement plusieurs formats pour rester compatible
-        avec le travail d'Adel et Henry : liste de tuples, objets Case, objet Motif, etc.
+        Reçoit les motifs depuis le contrôleur.
+        La méthode accepte plusieurs formats pour rester compatible
+        avec les classes du modèle.
         """
         self.motifs = motifs
         self.appliquer_styles_cases()
@@ -182,67 +202,75 @@ class ComposantGrille(QWidget):
     def set_cases_en_erreur(self, cases: list) -> None:
         """
         Reçoit les cases en erreur depuis le contrôleur.
-        Exemple attendu simple : [(1, 2), (3, 4)].
+
+        Exemple simple :
+        [(1, 2), (3, 4)]
         """
         self.cases_en_erreur = set()
 
         for case in cases:
-            coord = self._extraire_coordonnees_case(case)
-            if coord is not None:
-                self.cases_en_erreur.add(coord)
+            coordonnees = self._extraire_coordonnees_case(case)
+
+            if coordonnees is not None:
+                self.cases_en_erreur.add(coordonnees)
 
         self.appliquer_styles_cases()
 
     def effacer_erreurs(self) -> None:
-        """Retire le retour visuel d'erreur sans toucher aux valeurs de la grille."""
+        """
+        Retire le retour visuel d'erreur sans toucher aux valeurs.
+        """
         self.cases_en_erreur.clear()
         self.appliquer_styles_cases()
 
     def appliquer_styles_cases(self) -> None:
         """
-        Réapplique tous les styles visuels.
-        Cette méthode est la zone Jonas : elle gère les bordures épaisses des motifs
-        et la mise en rouge des cases signalées en erreur.
+        Réapplique les styles visuels :
+        - bordures fines par défaut ;
+        - bordures épaisses autour des motifs ;
+        - fond rouge pour les erreurs.
         """
-        # On remet d'abord toutes les cases avec une bordure fine.
-        for coord, cw in self.widgets_cases.items():
-            cw.bordures = {
+        for coordonnees, case_widget in self.widgets_cases.items():
+            case_widget.bordures = {
                 "top": 1,
                 "right": 1,
                 "bottom": 1,
                 "left": 1
             }
-            cw.est_en_erreur = coord in self.cases_en_erreur
 
-        # Puis on épaissit uniquement les côtés qui séparent deux motifs différents.
+            case_widget.est_en_erreur = coordonnees in self.cases_en_erreur
+
         for motif in self.motifs:
             cases_motif = self._extraire_coordonnees_motif(motif)
 
             for ligne, colonne in cases_motif:
-                cw = self.get_widget_at(ligne, colonne)
-                if cw is None:
+                case_widget = self.get_widget_at(ligne, colonne)
+
+                if case_widget is None:
                     continue
 
                 if (ligne - 1, colonne) not in cases_motif:
-                    cw.bordures["top"] = 4
+                    case_widget.bordures["top"] = 4
 
                 if (ligne, colonne + 1) not in cases_motif:
-                    cw.bordures["right"] = 4
+                    case_widget.bordures["right"] = 4
 
                 if (ligne + 1, colonne) not in cases_motif:
-                    cw.bordures["bottom"] = 4
+                    case_widget.bordures["bottom"] = 4
 
                 if (ligne, colonne - 1) not in cases_motif:
-                    cw.bordures["left"] = 4
+                    case_widget.bordures["left"] = 4
 
-        for cw in self.widgets_cases.values():
-            cw.appliquer_style()
+        for case_widget in self.widgets_cases.values():
+            case_widget.appliquer_style()
 
     def _extraire_coordonnees_motif(self, motif) -> set[tuple[int, int]]:
         """
         Convertit un motif en ensemble de coordonnées.
-        On garde cette fonction souple car le modèle définitif peut représenter un motif
-        avec une liste de tuples, une liste de Case, ou une classe Motif avec un getter.
+
+        On garde cette méthode souple parce que le modèle peut représenter
+        un motif de plusieurs manières : dictionnaire, objet Motif,
+        liste de tuples, liste de Case, etc.
         """
         cases = None
 
@@ -265,16 +293,17 @@ class ComposantGrille(QWidget):
             return resultat
 
         for case in cases:
-            coord = self._extraire_coordonnees_case(case)
-            if coord is not None:
-                resultat.add(coord)
+            coordonnees = self._extraire_coordonnees_case(case)
+
+            if coordonnees is not None:
+                resultat.add(coordonnees)
 
         return resultat
 
     def _extraire_coordonnees_case(self, case) -> tuple[int, int] | None:
         """
         Convertit une case en tuple (ligne, colonne).
-        Cette souplesse évite de casser la vue si le modèle évolue légèrement.
+        Cela évite de casser l'IHM si le modèle évolue légèrement.
         """
         if isinstance(case, tuple) or isinstance(case, list):
             if len(case) >= 2:
@@ -283,6 +312,7 @@ class ComposantGrille(QWidget):
         if isinstance(case, dict):
             if "ligne" in case and "colonne" in case:
                 return int(case["ligne"]), int(case["colonne"])
+
             if "row" in case and "col" in case:
                 return int(case["row"]), int(case["col"])
 
