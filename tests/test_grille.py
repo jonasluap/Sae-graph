@@ -1,8 +1,9 @@
 import pytest
 from src.model.grille import Grille
+from src.model.solveur import resoudre
 
 GRILLE1 = "Exemples de grille-20260609/grille1.json"
-
+GRILLE9 = "Exemples de grille-20260609/grille9.json"
 
 # --- tests à écrire ---
 
@@ -53,3 +54,20 @@ def test_est_valide():
     g = Grille()
     g.charger_json(GRILLE1)
     assert g.est_valide() == True
+    
+    
+    
+def test_solveur_grille1():
+    g = Grille()
+    g.charger_json(GRILLE1)
+    resultat = resoudre(g)
+    assert resultat == True
+    assert g.est_complete() == True
+    
+    
+def test_chargement_grille9():
+    g = Grille()
+    g.charger_json(GRILLE9)
+    assert g.nb_colonnes == 5
+    assert g.nb_lignes == 13
+    
