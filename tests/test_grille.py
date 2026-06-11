@@ -39,3 +39,17 @@ def test_get_voisins_milieu():
     g.charger_json(GRILLE1)
     voisins = g.get_voisins(3, 3)
     assert len(voisins) == 8
+    
+    
+def test_est_valide_conflit_voisins():
+    g = Grille()
+    g.charger_json(GRILLE1)
+    # Mettre la même valeur sur deux cases voisines
+    g.get_case(0, 0).valeur = 1
+    g.get_case(1, 0).valeur = 1  # voisin direct de (0,0)
+    assert g.est_valide() == False
+    
+def test_est_valide():
+    g = Grille()
+    g.charger_json(GRILLE1)
+    assert g.est_valide() == True
