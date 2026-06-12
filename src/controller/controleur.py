@@ -95,3 +95,19 @@ class Controleur:
 
         if self._on_solution_trouvee:
             self._on_solution_trouvee(succes, self.grille)
+
+    def verifier_grille(self) -> bool | None:
+        """Vérifie si l'état courant de la grille respecte toutes les contraintes."""
+        if self.grille is None:
+            return None
+        return self.grille.est_valide()
+
+    def reinitialiser_grille(self) -> None:
+        """Remet à None toutes les cases non fixées et notifie la vue."""
+        if self.grille is None:
+            return
+        for case in self.grille._cases.values():
+            if not case.fixee:
+                case.valeur = None
+        if self._on_grille_chargee:
+            self._on_grille_chargee(self.grille)
