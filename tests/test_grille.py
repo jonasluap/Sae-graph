@@ -1,4 +1,6 @@
 import pytest
+import os
+import tempfile
 from src.model.grille import Grille
 from src.model.solveur import resoudre
 
@@ -70,4 +72,23 @@ def test_chargement_grille9():
     g.charger_json(GRILLE9)
     assert g.nb_colonnes == 5
     assert g.nb_lignes == 13
-    
+
+
+def test_sauvegarder_json():
+    g = Grille()
+    g.charger_json(GRILLE1)
+    g.get_case(0, 0).valeur = 2
+
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+        chemin = f.name
+
+    try:
+        g.sauvegarder_json(chemin)
+        g2 = Grille()
+        g2.charger_json(chemin)
+        assert g2.nb_colonnes == 8
+        assert g2.nb_lignes == 8
+        assert g2.get_case(0, 0).valeur == 2
+        assert g2.get_case(0, 7).valeur == 3
+    finally:
+        os.remove(chemin)
