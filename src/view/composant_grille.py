@@ -1,16 +1,38 @@
 # src/view/composant_grille.py
 from PyQt6.QtWidgets import QWidget, QGridLayout, QLineEdit, QSizePolicy
-from PyQt6.QtCore import pyqtSignal, Qt
-from PyQt6.QtGui import QIntValidator, QFont
+from PyQt6.QtCore import pyqtSignal, Qt, QRegularExpression
+from PyQt6.QtGui import QRegularExpressionValidator, QFont
+
+# Palette de fonds attribuée à chaque motif pour les distinguer visuellement.
+# Les couleurs sont sombres pour rester lisibles sur le thème nuit tout en
+# différenciant clairement les régions (style Killer Sudoku).
+COULEURS_MOTIFS = [
+    "#1B2A4A",  # bleu marine
+    "#1A3A24",  # vert forêt
+    "#3A1A2A",  # framboise
+    "#2A2A14",  # olive
+    "#0D2A3A",  # cyan nuit
+    "#3A1A12",  # brique
+    "#1A1A3C",  # violet nuit
+    "#103020",  # émeraude
+    "#2C1A3A",  # prune
+    "#3A2A0E",  # ambre
+    "#143030",  # teal
+    "#2A1018",  # bordeaux
+    "#1E301A",  # vert mousse
+    "#10203A",  # bleu acier
+    "#301A1E",  # rose foncé
+]
 
 
 class CaseWidget(QLineEdit):
     """
     Widget représentant une case individuelle à l'écran.
 
-    La case reste un QLineEdit pour garder le travail d'Henry sur la saisie.
-    Les attributs ajoutés servent seulement à gérer l'apparence :
-    bordures épaisses des motifs, cases fixées, et erreurs.
+    Chaque case connaît sa position (ligne, colonne), la couleur de son motif,
+    son état (fixée / en erreur) et l'épaisseur de chacune de ses bordures.
+    Le validateur est mis à jour à chaque chargement de grille pour n'autoriser
+    que les valeurs 1..N correspondant à la taille du motif auquel elle appartient.
     """
 
     def __init__(self, ligne: int, colonne: int):
@@ -21,6 +43,7 @@ class CaseWidget(QLineEdit):
 
         self.est_fixee = False
         self.est_en_erreur = False
+        self.couleur_motif = "#160B35"
 
         self.bordures = {
             "top": 1,
@@ -30,8 +53,7 @@ class CaseWidget(QLineEdit):
         }
 
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setMaxLength(2)
-        self.setValidator(QIntValidator(1, 99))
+        self.setMaxLength(1)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         font = QFont("Segoe UI", 18)
@@ -42,45 +64,53 @@ class CaseWidget(QLineEdit):
 
     def appliquer_style(self) -> None:
         """
-        Centralise le style d'une case.
-        On reconstruit le style complet à chaque changement pour éviter
-        d'empiler plusieurs styles contradictoires.
+        Recalcule et applique le style complet de la case.
+
+        Le fond utilise la couleur du motif assignée par ComposantGrille.
+        Les bordures épaisses (>= 4 px) délimitant les motifs sont blanches ;
+        les bordures fines internes sont quasi invisibles.
+        En cas d'erreur, le fond passe au rouge et les bordures épaisses au rose.
         """
-        fond = "#160B35"
-        couleur_texte = "#F8FAFC"
-        bordure = "#6D5BA6"
+        fond = self.couleur_motif
+        couleur_texte = "#C8D4E8"
+        bordure_fine = "#0A0A1A"
+        bordure_epaisse = "#FFFFFF"
         graisse = "normal"
 
         if self.est_fixee:
-            fond = "#241547"
             couleur_texte = "#FFFFFF"
             graisse = "bold"
 
         if self.est_en_erreur:
             fond = "#7F1D1D"
             couleur_texte = "#FEE2E2"
-            bordure = "#FCA5A5"
+            bordure_fine = "#7F1D1D"
+            bordure_epaisse = "#F87171"
             graisse = "bold"
+
+        def bc(epaisseur):
+            return bordure_epaisse if epaisseur >= 4 else bordure_fine
 
         self.setStyleSheet(f"""
             QLineEdit {{
                 background-color: {fond};
                 color: {couleur_texte};
                 font-weight: {graisse};
-                border-top: {self.bordures["top"]}px solid {bordure};
-                border-right: {self.bordures["right"]}px solid {bordure};
-                border-bottom: {self.bordures["bottom"]}px solid {bordure};
-                border-left: {self.bordures["left"]}px solid {bordure};
+                border-top: {self.bordures["top"]}px solid {bc(self.bordures["top"])};
+                border-right: {self.bordures["right"]}px solid {bc(self.bordures["right"])};
+                border-bottom: {self.bordures["bottom"]}px solid {bc(self.bordures["bottom"])};
+                border-left: {self.bordures["left"]}px solid {bc(self.bordures["left"])};
                 selection-background-color: #A5B4FC;
             }}
 
             QLineEdit:hover {{
-                background-color: #1E1045;
+                background-color: {fond}CC;
             }}
 
             QLineEdit:focus {{
-                background-color: #2E1A66;
+                background-color: {fond};
                 color: #FFFFFF;
+                border: 2px solid #60A5FA;
             }}
 
             QLineEdit:read-only {{
@@ -178,6 +208,21 @@ class ComposantGrille(QWidget):
 
         self.appliquer_styles_cases()
 
+    def reconstruire(self, rows: int, cols: int) -> None:
+        """
+        Supprime tous les widgets existants et recrée la grille aux nouvelles dimensions.
+        Appelé à chaque chargement de fichier.
+        """
+        for widget in self.widgets_cases.values():
+            self.layout.removeWidget(widget)
+            widget.deleteLater()
+        self.widgets_cases.clear()
+        self.motifs = []
+        self.cases_en_erreur = set()
+        self.rows = rows
+        self.cols = cols
+        self.draw_grid()
+
     def refresh_view(self) -> None:
         """
         Force le rafraîchissement global de l'interface.
@@ -225,10 +270,13 @@ class ComposantGrille(QWidget):
 
     def appliquer_styles_cases(self) -> None:
         """
-        Réapplique les styles visuels :
-        - bordures fines par défaut ;
-        - bordures épaisses autour des motifs ;
-        - fond rouge pour les erreurs.
+        Réapplique l'ensemble des styles visuels sur toutes les cases.
+
+        Pour chaque motif : attribue sa couleur de fond (depuis COULEURS_MOTIFS),
+        pose des bordures épaisses (6 px, blanches) sur les côtés qui touchent
+        un motif différent, et met à jour le validateur pour n'accepter que 1..N.
+        Les cases signalées comme en erreur reçoivent un fond rouge quel que soit
+        leur motif.
         """
         for coordonnees, case_widget in self.widgets_cases.items():
             case_widget.bordures = {
@@ -237,11 +285,13 @@ class ComposantGrille(QWidget):
                 "bottom": 1,
                 "left": 1
             }
-
+            case_widget.couleur_motif = "#160B35"
             case_widget.est_en_erreur = coordonnees in self.cases_en_erreur
 
-        for motif in self.motifs:
+        for i, motif in enumerate(self.motifs):
+            couleur = COULEURS_MOTIFS[i % len(COULEURS_MOTIFS)]
             cases_motif = self._extraire_coordonnees_motif(motif)
+            n = len(cases_motif)
 
             for ligne, colonne in cases_motif:
                 case_widget = self.get_widget_at(ligne, colonne)
@@ -249,17 +299,25 @@ class ComposantGrille(QWidget):
                 if case_widget is None:
                     continue
 
+                case_widget.couleur_motif = couleur
+                if n <= 9:
+                    pattern = f"[1-{n}]"
+                else:
+                    pattern = "|".join(str(i) for i in range(1, n + 1))
+                case_widget.setMaxLength(len(str(n)))
+                case_widget.setValidator(QRegularExpressionValidator(QRegularExpression(pattern)))
+
                 if (ligne - 1, colonne) not in cases_motif:
-                    case_widget.bordures["top"] = 4
+                    case_widget.bordures["top"] = 6
 
                 if (ligne, colonne + 1) not in cases_motif:
-                    case_widget.bordures["right"] = 4
+                    case_widget.bordures["right"] = 6
 
                 if (ligne + 1, colonne) not in cases_motif:
-                    case_widget.bordures["bottom"] = 4
+                    case_widget.bordures["bottom"] = 6
 
                 if (ligne, colonne - 1) not in cases_motif:
-                    case_widget.bordures["left"] = 4
+                    case_widget.bordures["left"] = 6
 
         for case_widget in self.widgets_cases.values():
             case_widget.appliquer_style()
@@ -315,6 +373,9 @@ class ComposantGrille(QWidget):
 
             if "row" in case and "col" in case:
                 return int(case["row"]), int(case["col"])
+
+        if hasattr(case, "ligne") and hasattr(case, "col"):
+            return int(case.ligne), int(case.col)
 
         if hasattr(case, "ligne") and hasattr(case, "colonne"):
             return int(case.ligne), int(case.colonne)

@@ -36,6 +36,7 @@ class FenetrePrincipale(QMainWindow):
         self.initialiser_menus()
         self.initialiser_interface()
         self.appliquer_theme_jeu()
+        self._connecter_controleur()
 
     def initialiser_menus(self) -> None:
         """
@@ -560,6 +561,123 @@ class FenetrePrincipale(QMainWindow):
             self.action_mode_sombre.setChecked(False)
             self.appliquer_theme_jeu()
 
+    def _connecter_controleur(self) -> None:
+        """
+        Enregistre les callbacks auprès du contrôleur et connecte le signal de saisie.
+
+        Appelée une seule fois à la fin de __init__. Le contrôleur appellera
+        directement les méthodes _cb_* quand le modèle change, sans que la vue
+        n'ait à interroger le contrôleur en permanence.
+        """
+        if hasattr(self.controleur, "on_grille_chargee"):
+            self.controleur.on_grille_chargee(self._cb_grille_chargee)
+            self.controleur.on_grille_modifiee(self._cb_grille_modifiee)
+            self.controleur.on_solution_trouvee(self._cb_solution_trouvee)
+            self.controleur.on_erreur(self._cb_erreur)
+        self.composant_grille.saisie_utilisateur.connect(self._on_saisie)
+
+    def _on_saisie(self, ligne: int, colonne: int, valeur: int) -> None:
+        """
+        Relaie la saisie du joueur vers le contrôleur.
+
+        Le signal saisie_utilisateur émet (ligne, colonne) mais le contrôleur
+        attend (col, ligne) : l'inversion est faite ici pour respecter la
+        convention du modèle sans modifier ni la vue ni le contrôleur.
+        La valeur 0 signifie case vidée et est convertie en None.
+        """
+        val = None if valeur == 0 else valeur
+        self.controleur.saisir_valeur(colonne, ligne, val)
+
+    def _cb_grille_chargee(self, grille) -> None:
+        """
+        Callback appelé par le contrôleur après un chargement JSON réussi.
+
+        Reconstruit la grille visuelle aux bonnes dimensions, remplit les valeurs,
+        applique les couleurs et bordures des motifs, puis bascule sur l'écran de jeu.
+        La conversion (col, ligne) → (ligne, col) est nécessaire car le modèle
+        indexe par colonne en premier, et la vue par ligne.
+        """
+        self.composant_grille.reconstruire(grille.nb_lignes, grille.nb_colonnes)
+        donnees = {
+            (ligne, col): {"valeur": case.valeur, "fixee": case.fixee}
+            for (col, ligne), case in grille._cases.items()
+        }
+        self.composant_grille.draw_values(donnees)
+        self.composant_grille.set_motifs(grille.motifs)
+        self.afficher_page_jeu()
+        self.statusBar().showMessage("Grille chargée.")
+
+    def _cb_grille_modifiee(self, col: int, ligne: int, valeur, est_valide: bool) -> None:
+        """
+        Callback appelé par le contrôleur après chaque saisie du joueur.
+
+        Si la grille est valide, efface les cases en rouge.
+        Sinon, identifie les cases en conflit via _trouver_cases_en_erreur
+        et les met en évidence en rouge.
+        """
+        if est_valide:
+            self.composant_grille.effacer_erreurs()
+            self.statusBar().showMessage("Grille correcte.")
+        else:
+            self.composant_grille.set_cases_en_erreur(self._trouver_cases_en_erreur())
+            self.statusBar().showMessage("Erreur détectée dans la grille.")
+
+    def _cb_solution_trouvee(self, succes: bool, grille) -> None:
+        """
+        Callback appelé par le contrôleur à la fin de la résolution.
+
+        Si une solution a été trouvée, met à jour l'affichage et informe le joueur.
+        Sinon, affiche un avertissement (la grille peut ne pas avoir de solution).
+        """
+        if succes:
+            donnees = {
+                (ligne, col): {"valeur": case.valeur, "fixee": case.fixee}
+                for (col, ligne), case in grille._cases.items()
+            }
+            self.composant_grille.draw_values(donnees)
+            self.composant_grille.effacer_erreurs()
+            self.statusBar().showMessage("Solution trouvée !")
+            QMessageBox.information(self, "Résolution", "La grille a été résolue avec succès !")
+        else:
+            self.statusBar().showMessage("Aucune solution trouvée.")
+            QMessageBox.warning(self, "Résolution", "Aucune solution n'a pu être trouvée pour cette grille.")
+
+    def _cb_erreur(self, message: str) -> None:
+        """
+        Callback appelé par le contrôleur quand une opération échoue
+        (fichier introuvable, JSON malformé, etc.).
+        """
+        self.statusBar().showMessage(f"Erreur : {message}")
+        QMessageBox.critical(self, "Erreur", message)
+
+    def _trouver_cases_en_erreur(self) -> list:
+        """
+        Parcourt la grille et retourne les cases qui violent au moins une contrainte.
+
+        Vérifie deux règles du jeu :
+        - Adjacence : deux cases voisines (8 directions) ne peuvent avoir la même valeur.
+        - Motif : un motif ne peut contenir deux fois la même valeur.
+        Les cases vides (None) sont ignorées.
+        """
+        grille = self.controleur.grille
+        if grille is None:
+            return []
+        erreurs = set()
+        for case in grille._cases.values():
+            if case.valeur is None:
+                continue
+            for voisin in grille.get_voisins(case.col, case.ligne):
+                if voisin.valeur == case.valeur:
+                    erreurs.add(case)
+                    erreurs.add(voisin)
+        for motif in grille.motifs:
+            valeurs = [c.valeur for c in motif.cases if c.valeur is not None]
+            if len(valeurs) != len(set(valeurs)):
+                for c in motif.cases:
+                    if c.valeur is not None and valeurs.count(c.valeur) > 1:
+                        erreurs.add(c)
+        return list(erreurs)
+
     def _appeler_controleur(self, nom_methode: str, *args):
         """
         Appelle une méthode du contrôleur seulement si elle existe.
@@ -604,13 +722,18 @@ class FenetrePrincipale(QMainWindow):
 
     def action_verifier(self) -> None:
         resultat = self._appeler_controleur("verifier_grille")
+        grille = getattr(self.controleur, "grille", None)
 
         if resultat is True:
-            self.statusBar().showMessage("La grille est correcte.")
-            QMessageBox.information(self, "Vérification", "La grille est correcte.")
+            if grille is not None and grille.est_complete():
+                self.statusBar().showMessage("Félicitations ! La grille est complète et correcte !")
+                QMessageBox.information(self, "Vérification", "Félicitations ! La grille est complète et correcte !")
+            else:
+                self.statusBar().showMessage("Pas d'erreur pour l'instant, mais la grille n'est pas encore complète.")
+                QMessageBox.information(self, "Vérification", "Pas d'erreur pour l'instant, mais toutes les cases ne sont pas encore remplies.")
 
         elif resultat is False:
-            self.statusBar().showMessage("La grille contient encore des erreurs.")
+            self.statusBar().showMessage("La grille contient des erreurs.")
             QMessageBox.warning(self, "Vérification", "La grille contient encore des erreurs.")
 
     def action_resoudre(self) -> None:
