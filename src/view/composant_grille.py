@@ -178,21 +178,6 @@ class ComposantGrille(QWidget):
 
         self.appliquer_styles_cases()
 
-    def reconstruire(self, rows: int, cols: int) -> None:
-        """
-        Supprime tous les widgets existants et recrée la grille aux nouvelles dimensions.
-        Appelé à chaque chargement de fichier.
-        """
-        for widget in self.widgets_cases.values():
-            self.layout.removeWidget(widget)
-            widget.deleteLater()
-        self.widgets_cases.clear()
-        self.motifs = []
-        self.cases_en_erreur = set()
-        self.rows = rows
-        self.cols = cols
-        self.draw_grid()
-
     def refresh_view(self) -> None:
         """
         Force le rafraîchissement global de l'interface.
@@ -330,9 +315,6 @@ class ComposantGrille(QWidget):
 
             if "row" in case and "col" in case:
                 return int(case["row"]), int(case["col"])
-
-        if hasattr(case, "ligne") and hasattr(case, "col"):
-            return int(case.ligne), int(case.col)
 
         if hasattr(case, "ligne") and hasattr(case, "colonne"):
             return int(case.ligne), int(case.colonne)

@@ -36,7 +36,6 @@ class FenetrePrincipale(QMainWindow):
         self.initialiser_menus()
         self.initialiser_interface()
         self.appliquer_theme_jeu()
-        self._connecter_controleur()
 
     def initialiser_menus(self) -> None:
         """
@@ -560,82 +559,6 @@ class FenetrePrincipale(QMainWindow):
             self.mode_sombre = False
             self.action_mode_sombre.setChecked(False)
             self.appliquer_theme_jeu()
-
-    def _connecter_controleur(self) -> None:
-        """Branche les callbacks du contrôleur et le signal de saisie."""
-        if hasattr(self.controleur, "on_grille_chargee"):
-            self.controleur.on_grille_chargee(self._cb_grille_chargee)
-            self.controleur.on_grille_modifiee(self._cb_grille_modifiee)
-            self.controleur.on_solution_trouvee(self._cb_solution_trouvee)
-            self.controleur.on_erreur(self._cb_erreur)
-        self.composant_grille.saisie_utilisateur.connect(self._on_saisie)
-
-    def _on_saisie(self, ligne: int, colonne: int, valeur: int) -> None:
-        """Relaie la saisie de la vue vers le contrôleur (inversion col/ligne)."""
-        val = None if valeur == 0 else valeur
-        self.controleur.saisir_valeur(colonne, ligne, val)
-
-    def _cb_grille_chargee(self, grille) -> None:
-        """Reconstruit l'affichage quand une grille est chargée."""
-        self.composant_grille.reconstruire(grille.nb_lignes, grille.nb_colonnes)
-        donnees = {
-            (ligne, col): {"valeur": case.valeur, "fixee": case.fixee}
-            for (col, ligne), case in grille._cases.items()
-        }
-        self.composant_grille.draw_values(donnees)
-        self.composant_grille.set_motifs(grille.motifs)
-        self.afficher_page_jeu()
-        self.statusBar().showMessage("Grille chargée.")
-
-    def _cb_grille_modifiee(self, col: int, ligne: int, valeur, est_valide: bool) -> None:
-        """Met à jour le retour visuel d'erreur après chaque saisie."""
-        if est_valide:
-            self.composant_grille.effacer_erreurs()
-            self.statusBar().showMessage("Grille correcte.")
-        else:
-            self.composant_grille.set_cases_en_erreur(self._trouver_cases_en_erreur())
-            self.statusBar().showMessage("Erreur détectée dans la grille.")
-
-    def _cb_solution_trouvee(self, succes: bool, grille) -> None:
-        """Affiche la solution ou un avertissement selon le résultat du solveur."""
-        if succes:
-            donnees = {
-                (ligne, col): {"valeur": case.valeur, "fixee": case.fixee}
-                for (col, ligne), case in grille._cases.items()
-            }
-            self.composant_grille.draw_values(donnees)
-            self.composant_grille.effacer_erreurs()
-            self.statusBar().showMessage("Solution trouvée !")
-            QMessageBox.information(self, "Résolution", "La grille a été résolue avec succès !")
-        else:
-            self.statusBar().showMessage("Aucune solution trouvée.")
-            QMessageBox.warning(self, "Résolution", "Aucune solution n'a pu être trouvée pour cette grille.")
-
-    def _cb_erreur(self, message: str) -> None:
-        """Affiche un message d'erreur venant du contrôleur."""
-        self.statusBar().showMessage(f"Erreur : {message}")
-        QMessageBox.critical(self, "Erreur", message)
-
-    def _trouver_cases_en_erreur(self) -> list:
-        """Retourne la liste des cases qui violent une contrainte."""
-        grille = self.controleur.grille
-        if grille is None:
-            return []
-        erreurs = set()
-        for case in grille._cases.values():
-            if case.valeur is None:
-                continue
-            for voisin in grille.get_voisins(case.col, case.ligne):
-                if voisin.valeur == case.valeur:
-                    erreurs.add(case)
-                    erreurs.add(voisin)
-        for motif in grille.motifs:
-            valeurs = [c.valeur for c in motif.cases if c.valeur is not None]
-            if len(valeurs) != len(set(valeurs)):
-                for c in motif.cases:
-                    if c.valeur is not None and valeurs.count(c.valeur) > 1:
-                        erreurs.add(c)
-        return list(erreurs)
 
     def _appeler_controleur(self, nom_methode: str, *args):
         """
