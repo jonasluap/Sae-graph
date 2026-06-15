@@ -1,29 +1,136 @@
-# Néonaure
+# Néonaure - SAÉ Graphes-IHM
 
-Projet SAÉ Graphes-IHM — BUT Informatique 2025-2026  
-IUT du Littoral Côte d'Opale
+## Présentation du projet
 
-**Membres du groupe :** Adel Essalhi · Henry · Jonas
+Ce projet a été réalisé dans le cadre de la SAÉ Graphes-IHM en BUT Informatique.
 
----
+L’objectif est de développer une application graphique en Python permettant de jouer au jeu **Néonaure**, une variante du Sudoku basée sur des motifs et des contraintes de voisinage.
 
-## Présentation du jeu
-
-Le Néonaure est une variante du Sudoku jouée sur une grille carrée (8×8) ou rectangulaire.  
-La grille est divisée en **motifs** (régions irrégulières délimitées par des bordures épaisses), chaque motif de taille N devant contenir exactement les chiffres **1 à N**.
-
-### Règles
-
-1. **Un chiffre par case.**
-2. **Adjacence** : deux cases voisines (y compris en diagonale, 8 directions) ne peuvent pas avoir la même valeur.
-3. **Motif** : un motif de N cases doit contenir exactement les chiffres 1 à N, sans doublon.
+L’application utilise **PyQt6** pour l’interface graphique et respecte une architecture **MVC**.
 
 ---
 
-## Prérequis
+## Règles du jeu
 
-- Python 3.11+
-- PyQt6
+Le Néonaure est un jeu de logique sur une grille composée de plusieurs motifs.
+
+Les règles principales sont :
+
+1. Chaque case peut contenir un seul chiffre.
+2. Deux cases voisines ne peuvent pas contenir le même chiffre, y compris en diagonale.
+3. Un motif composé de `N` cases doit contenir les chiffres de `1` à `N`.
+4. Certaines cases sont déjà remplies au départ et ne peuvent pas être modifiées.
+5. Les cases remplies par le joueur restent modifiables.
+
+---
+
+## Membres du groupe
+
+* Adel : modèle, chargement et sauvegarde des grilles, résolution, contrôleur principal.
+* Henry : composant graphique de la grille, saisie utilisateur, gestion des cases.
+* Jonas : fenêtre principale, menus, ergonomie, affichage des motifs et retour visuel des erreurs.
+
+---
+
+## Technologies utilisées
+
+* Python
+* PyQt6
+* JSON
+* Git / GitHub
+
+---
+
+## Architecture du projet
+
+Le projet respecte l’architecture MVC.
+
+### Modèle
+
+Le modèle contient les données et les règles du jeu.
+
+Il gère notamment :
+
+* les cases ;
+* les motifs ;
+* la grille ;
+* les règles de validité ;
+* le chargement et la sauvegarde des fichiers JSON ;
+* le solveur.
+
+### Vue
+
+La vue correspond à l’interface graphique.
+
+Elle gère notamment :
+
+* la fenêtre principale ;
+* le menu principal ;
+* l’affichage de la grille ;
+* les boutons ;
+* le thème sombre / clair ;
+* les bordures épaisses des motifs ;
+* les cases en erreur.
+
+La vue ne modifie pas directement le modèle. Elle transmet les actions de l’utilisateur au contrôleur.
+
+### Contrôleur
+
+Le contrôleur fait le lien entre le modèle et la vue.
+
+Il reçoit les actions de l’utilisateur, demande au modèle de faire les traitements nécessaires, puis demande à la vue de se mettre à jour.
+
+---
+
+## Fonctionnalités
+
+L’application permet de :
+
+* afficher un menu principal ;
+* charger une grille depuis un fichier JSON ;
+* afficher une grille adaptée à sa taille réelle ;
+* saisir des valeurs dans les cases modifiables ;
+* empêcher la saisie de valeurs supérieures à la taille du motif ;
+* afficher les cases fixées en gris ;
+* afficher les erreurs en rouge ;
+* afficher les motifs avec des bordures épaisses ;
+* sauvegarder une grille ;
+* vérifier une grille ;
+* résoudre une grille ;
+* réinitialiser une grille ;
+* changer entre un mode sombre et un mode clair.
+
+---
+
+## Lancement du projet
+
+Pour lancer l’application, il faut d’abord être à la racine du projet.
+
+Commande :
+
+```bash
+python main.py
+```
+
+Si plusieurs versions de Python sont installées, il peut être nécessaire d’utiliser :
+
+```bash
+python3 main.py
+```
+
+ou :
+
+```bash
+py main.py
+```
+
+---
+
+## Installation des dépendances
+
+Le projet utilise PyQt6.
+
+Pour installer PyQt6 :
 
 ```bash
 pip install PyQt6
@@ -31,86 +138,92 @@ pip install PyQt6
 
 ---
 
-## Lancement
+## Structure du projet
 
-```bash
-python main.py
+Exemple de structure :
+
+```text
+Sae-graph/
+│
+├── main.py
+│
+└── src/
+    ├── controller/
+    │   └── controleur.py
+    │
+    ├── model/
+    │   ├── case.py
+    │   ├── grille.py
+    │   ├── motif.py
+    │   └── solveur.py
+    │
+    └── view/
+        ├── fenetre_principale.py
+        └── composant_grille.py
 ```
 
 ---
 
-## Utilisation
+## Partie réalisée par Jonas
 
-1. **Charger une grille** — Menu *Fichier → Charger* ou bouton **Charger** dans l'écran de jeu. Sélectionner un fichier `.json` depuis le dossier `Exemples de grille-20260609/`.
-2. **Jouer** — Cliquer sur une case libre et saisir un chiffre. Seules les valeurs valides pour le motif (1 à N) sont acceptées. Les cases en conflit passent en rouge automatiquement.
-3. **Vérifier** — Le bouton **Vérifier** indique si la grille est correcte, incomplète ou en erreur.
-4. **Résoudre** — Le bouton **Résoudre** lance l'algorithme de backtracking et affiche la solution.
-5. **Réinitialiser** — Efface toutes les valeurs saisies et repart de l'état initial.
-6. **Sauvegarder** — Enregistre l'état courant de la grille au format JSON.
+La partie réalisée par Jonas concerne principalement l’interface graphique.
 
----
+Les éléments réalisés sont :
 
-## Architecture MVC
-
-```
-src/
-├── model/
-│   ├── case.py       # Une case : position, valeur, état fixé/libre
-│   ├── motif.py      # Un motif : groupe de cases, validation 1..N
-│   ├── grille.py     # La grille : chargement JSON, voisinage, validation
-│   └── solveur.py    # Algorithme de résolution par backtracking
-├── view/
-│   ├── fenetre_principale.py   # Fenêtre principale, menus, callbacks
-│   └── composant_grille.py     # Grille visuelle, cases colorées par motif
-├── controller/
-│   └── controleur.py  # Lien entre vue et modèle via callbacks
-└── utils/
-tests/
-├── test_case.py
-├── test_motif.py
-├── test_grille.py
-└── test_controleur.py
-```
-
-**Principe :**
-- La **vue** ne manipule jamais le modèle directement.
-- Le **modèle** ne connaît pas la vue.
-- Le **contrôleur** reçoit les actions de la vue, met à jour le modèle et notifie la vue via des callbacks.
+* création de la fenêtre principale ;
+* ajout d’un menu principal ;
+* ajout des boutons de navigation ;
+* ajout des menus `Fichier`, `Jouer`, `Options` et `Aide` ;
+* création d’un thème sombre et d’un thème clair ;
+* centrage de la grille dans le plateau de jeu ;
+* adaptation de la taille des cases selon la taille de la grille ;
+* affichage visuel des motifs avec des bordures épaisses ;
+* affichage des erreurs en rouge ;
+* blocage visuel des cases fixées ;
+* limitation de la saisie selon la taille du motif ;
+* connexion de la vue avec le contrôleur.
 
 ---
 
-## Algorithme de résolution
+## Gestion des grilles
 
-Le solveur utilise un **backtracking récursif** :
+Les grilles sont chargées depuis des fichiers JSON.
 
-1. Trouver la première case vide.
-2. Essayer chaque valeur de 1 à N (N = taille du motif de cette case).
-3. Vérifier que la valeur ne crée pas de conflit (adjacence + motif).
-4. Si valide, placer la valeur et continuer récursivement.
-5. Si aucune valeur ne fonctionne, revenir en arrière (*backtrack*).
+Lorsqu’une grille est chargée :
 
----
-
-## Format des grilles JSON
-
-```json
-{
-  "motif1": [[col, ligne, valeur], ...],
-  "motif2": [[col, ligne, valeur], ...],
-  ...
-}
-```
-
-- `col` : position horizontale (commence à 0)
-- `ligne` : position verticale (commence à 0)
-- `valeur` : chiffre pré-rempli, **0 = case vide**
-
-Les dimensions de la grille sont déduites automatiquement (max col + 1, max ligne + 1).
+* les cases existantes sont affichées ;
+* les cases fixées sont bloquées ;
+* les cases modifiables restent éditables ;
+* les motifs sont affichés avec des bordures épaisses ;
+* la taille de la grille s’adapte automatiquement au fichier chargé.
 
 ---
 
-## Lancer les tests
+## Ergonomie
 
-```bash
-python -m pytest tests/
-```
+L’interface a été pensée pour être simple à utiliser.
+
+Les choix ergonomiques principaux sont :
+
+* menu principal clair ;
+* boutons visibles ;
+* grille centrée ;
+* cases carrées ;
+* couleurs différentes pour les cases fixées et les erreurs ;
+* bordures épaisses pour repérer les motifs ;
+* messages d’information pour guider l’utilisateur.
+
+---
+
+## Remarques
+
+Certaines fonctionnalités dépendent du modèle et du contrôleur.
+
+Par exemple :
+
+* le chargement réel des fichiers JSON ;
+* la sauvegarde ;
+* la vérification complète des règles ;
+* la résolution automatique.
+
+La vue se contente d’envoyer les actions de l’utilisateur au contrôleur et d’afficher les résultats reçus.
