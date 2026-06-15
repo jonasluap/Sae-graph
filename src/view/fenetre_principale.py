@@ -3,7 +3,7 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QStackedWidget,
     QFileDialog, QMessageBox, QLabel, QPushButton, QFrame
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QAction
 
 from src.view.composant_grille import ComposantGrille
@@ -13,21 +13,16 @@ class FenetrePrincipale(QMainWindow):
     """
     Fenêtre principale de l'application Néonaure.
 
-    L'interface est séparée en deux écrans :
-    - un menu principal sobre, dans un style jeu ;
-    - un écran de jeu avec la grille et les actions principales.
-
-    La vue ne modifie jamais directement le modèle.
-    Toutes les actions importantes passent par le contrôleur.
+    La vue affiche l'interface et transmet les actions au contrôleur.
+    Elle ne charge pas le JSON elle-même et ne modifie pas directement le modèle.
     """
 
     def __init__(self, controleur):
         super().__init__()
 
         self.controleur = controleur
-
-        # L'application démarre en mode sombre pour garder une ambiance sobre.
         self.mode_sombre = True
+        self._chargement_en_cours = False
 
         self.setWindowTitle("Néonaure - SAÉ Graphes-IHM")
         self.resize(1000, 720)
@@ -35,13 +30,10 @@ class FenetrePrincipale(QMainWindow):
 
         self.initialiser_menus()
         self.initialiser_interface()
+        self.brancher_controleur()
         self.appliquer_theme_jeu()
 
     def initialiser_menus(self) -> None:
-        """
-        Crée la barre de menus en haut.
-        Elle reste utile même si l'utilisateur a aussi un menu principal au centre.
-        """
         barre_menu = self.menuBar()
 
         menu_fichier = barre_menu.addMenu("Fichier")
@@ -62,8 +54,8 @@ class FenetrePrincipale(QMainWindow):
 
         menu_jeu = barre_menu.addMenu("Jouer")
 
-        action_jouer = QAction("Aller au jeu", self)
-        action_jouer.triggered.connect(self.afficher_page_jeu)
+        action_jouer = QAction("Charger une grille", self)
+        action_jouer.triggered.connect(self.action_charger)
         menu_jeu.addAction(action_jouer)
 
         action_verifier = QAction("Vérifier la grille", self)
@@ -78,13 +70,13 @@ class FenetrePrincipale(QMainWindow):
         action_reinitialiser.triggered.connect(self.action_reinitialiser)
         menu_jeu.addAction(action_reinitialiser)
 
-        menu_affichage = barre_menu.addMenu("Options")
+        menu_options = barre_menu.addMenu("Options")
 
         self.action_mode_sombre = QAction("Mode sombre", self)
         self.action_mode_sombre.setCheckable(True)
         self.action_mode_sombre.setChecked(self.mode_sombre)
         self.action_mode_sombre.triggered.connect(self.changer_theme)
-        menu_affichage.addAction(self.action_mode_sombre)
+        menu_options.addAction(self.action_mode_sombre)
 
         menu_aide = barre_menu.addMenu("Aide")
 
@@ -97,10 +89,6 @@ class FenetrePrincipale(QMainWindow):
         menu_aide.addAction(action_credits)
 
     def initialiser_interface(self) -> None:
-        """
-        Utilise un QStackedWidget pour passer facilement du menu principal
-        à l'écran de jeu.
-        """
         self.stack = QStackedWidget()
         self.setCentralWidget(self.stack)
 
@@ -113,10 +101,6 @@ class FenetrePrincipale(QMainWindow):
         self.stack.setCurrentWidget(self.page_menu)
 
     def creer_page_menu(self) -> QWidget:
-        """
-        Crée un menu principal sobre, inspiré d'un écran de jeu.
-        On garde les gros boutons verticaux, mais avec des couleurs plus discrètes.
-        """
         page = QWidget()
         page.setObjectName("pageMenu")
 
@@ -145,14 +129,14 @@ class FenetrePrincipale(QMainWindow):
         layout_menu.addStretch()
         layout_menu.addWidget(titre)
         layout_menu.addWidget(sous_titre)
+        layout_menu.addSpacing(20)
 
-        self.bouton_jouer = self.creer_bouton_menu("JOUER", self.lancer_nouvelle_partie)
+        self.bouton_jouer = self.creer_bouton_menu("JOUER", self.action_charger)
         self.bouton_continuer = self.creer_bouton_menu("CONTINUER", self.afficher_page_jeu)
         self.bouton_options = self.creer_bouton_menu("OPTIONS", self.ouvrir_options)
         self.bouton_credits = self.creer_bouton_menu("CRÉDITS", self.action_credits)
         self.bouton_quitter = self.creer_bouton_menu("QUITTER", self.action_quitter)
 
-        layout_menu.addSpacing(20)
         layout_menu.addWidget(self.bouton_jouer, alignment=Qt.AlignmentFlag.AlignHCenter)
         layout_menu.addWidget(self.bouton_continuer, alignment=Qt.AlignmentFlag.AlignHCenter)
         layout_menu.addWidget(self.bouton_options, alignment=Qt.AlignmentFlag.AlignHCenter)
@@ -165,10 +149,6 @@ class FenetrePrincipale(QMainWindow):
         return page
 
     def creer_bouton_menu(self, texte: str, slot) -> QPushButton:
-        """
-        Crée un gros bouton vertical pour le menu principal.
-        Le style est appliqué dans appliquer_theme_jeu().
-        """
         bouton = QPushButton(texte)
         bouton.setFixedSize(280, 58)
         bouton.clicked.connect(slot)
@@ -177,10 +157,6 @@ class FenetrePrincipale(QMainWindow):
         return bouton
 
     def creer_page_jeu(self) -> QWidget:
-        """
-        Crée l'écran de jeu avec une barre d'actions en haut
-        et la grille au centre.
-        """
         page = QWidget()
         page.setObjectName("pageJeu")
 
@@ -224,30 +200,150 @@ class FenetrePrincipale(QMainWindow):
         layout_carte = QVBoxLayout()
         layout_carte.setContentsMargins(20, 20, 20, 20)
         layout_carte.setSpacing(14)
+        layout_carte.setAlignment(Qt.AlignmentFlag.AlignCenter)
         carte.setLayout(layout_carte)
 
         titre_jeu = QLabel("Plateau de jeu")
         titre_jeu.setAlignment(Qt.AlignmentFlag.AlignCenter)
         titre_jeu.setObjectName("titreJeu")
 
-        # Important : on passe parent=self.
-        # Si on écrit ComposantGrille(self), self serait pris pour le nombre de lignes.
         self.composant_grille = ComposantGrille(parent=self)
 
         layout_carte.addWidget(titre_jeu)
-        layout_carte.addWidget(self.composant_grille)
+        layout_carte.addWidget(self.composant_grille, alignment=Qt.AlignmentFlag.AlignCenter)
 
         layout_principal.addLayout(entete)
         layout_principal.addWidget(carte)
 
         return page
 
+    def brancher_controleur(self) -> None:
+        """
+        Branche les callbacks du contrôleur vers la vue.
+        C'est ce qui permet à la grille chargée de s'afficher.
+        """
+        if hasattr(self.controleur, "on_grille_chargee"):
+            self.controleur.on_grille_chargee(self.afficher_grille)
+
+        if hasattr(self.controleur, "on_grille_modifiee"):
+            self.controleur.on_grille_modifiee(self.apres_saisie_case)
+
+        if hasattr(self.controleur, "on_solution_trouvee"):
+            self.controleur.on_solution_trouvee(self.afficher_solution)
+
+        if hasattr(self.controleur, "on_erreur"):
+            self.controleur.on_erreur(self.afficher_erreur)
+
+        self.composant_grille.saisie_utilisateur.connect(self.envoyer_saisie_au_controleur)
+
+    def envoyer_saisie_au_controleur(self, ligne: int, colonne: int, valeur: int) -> None:
+        """
+        La vue travaille en ligne / colonne.
+        Le modèle travaille en colonne / ligne.
+        On inverse donc avant d'envoyer au contrôleur.
+        """
+        if self._chargement_en_cours:
+            return
+
+        valeur_modele = None if valeur == 0 else valeur
+        self._appeler_controleur("saisir_valeur", colonne, ligne, valeur_modele)
+
+    def afficher_grille(self, grille) -> None:
+        """
+        Affiche la grille reçue depuis le contrôleur.
+        La taille est calculée à partir des cases réellement présentes.
+
+        On calcule aussi la valeur maximale autorisée par case :
+        motif de N cases => valeurs autorisées de 1 à N.
+        """
+        self._chargement_en_cours = True
+        self.composant_grille.setUpdatesEnabled(False)
+
+        try:
+            donnees_vue = {}
+
+            for (colonne, ligne), case in grille._cases.items():
+                donnees_vue[(ligne, colonne)] = {
+                    "valeur": case.valeur,
+                    "fixee": case.fixee
+                }
+
+            if donnees_vue:
+                nb_lignes = max(ligne for ligne, colonne in donnees_vue.keys()) + 1
+                nb_colonnes = max(colonne for ligne, colonne in donnees_vue.keys()) + 1
+            else:
+                nb_lignes = 1
+                nb_colonnes = 1
+
+            self.composant_grille.changer_dimensions(nb_lignes, nb_colonnes)
+
+            motifs_vue = []
+            valeurs_max_par_case = {}
+
+            for motif in grille.motifs:
+                cases_motif = []
+
+                for case in motif.cases:
+                    cases_motif.append((case.ligne, case.col))
+
+                motifs_vue.append(cases_motif)
+
+                taille_motif = len(cases_motif)
+
+                for coordonnees in cases_motif:
+                    valeurs_max_par_case[coordonnees] = taille_motif
+
+            self.composant_grille.bloquer_signaux(True)
+            self.composant_grille.set_cases_actives(donnees_vue.keys())
+            self.composant_grille.set_valeurs_max_par_case(valeurs_max_par_case)
+            self.composant_grille.draw_values(donnees_vue)
+            self.composant_grille.set_motifs(motifs_vue)
+
+        finally:
+            self.composant_grille.bloquer_signaux(False)
+            self.composant_grille.setUpdatesEnabled(True)
+            self._chargement_en_cours = False
+            self.composant_grille.update()
+
+        self.afficher_page_jeu()
+        self.statusBar().showMessage("Grille chargée et affichée.")
+
+
+    def apres_saisie_case(self, colonne: int, ligne: int, valeur: int | None, est_valide: bool) -> None:
+        """
+        Appelée par le contrôleur après une saisie.
+        """
+        if self._chargement_en_cours:
+            return
+
+        if est_valide:
+            self.composant_grille.effacer_erreurs()
+            self.statusBar().showMessage("Saisie acceptée.")
+        else:
+            self.composant_grille.set_cases_en_erreur([(ligne, colonne)])
+            self.statusBar().showMessage("Cette saisie crée une erreur.")
+
+    def afficher_solution(self, succes: bool, grille) -> None:
+        """
+        Affiche le résultat du solveur.
+        """
+        if succes:
+            self.afficher_grille(grille)
+            QMessageBox.information(self, "Résolution", "Une solution a été trouvée.")
+            self.statusBar().showMessage("Solution trouvée.")
+        else:
+            QMessageBox.warning(
+                self,
+                "Résolution",
+                "Aucune solution trouvée ou le solveur s'est arrêté."
+            )
+            self.statusBar().showMessage("Résolution arrêtée.")
+
+    def afficher_erreur(self, message: str) -> None:
+        QMessageBox.critical(self, "Erreur", message)
+        self.statusBar().showMessage("Erreur.")
+
     def appliquer_theme_jeu(self) -> None:
-        """
-        Applique un thème sobre.
-        Le mode sombre reprend une ambiance violet / bleu nuit,
-        proche de l'image donnée, mais sans couleurs trop agressives.
-        """
         if self.mode_sombre:
             self.setStyleSheet("""
                 QMainWindow {
@@ -368,7 +464,6 @@ class FenetrePrincipale(QMainWindow):
                     color: #E5E7EB;
                 }
             """)
-
             self.statusBar().showMessage("Mode sombre activé")
 
         else:
@@ -492,51 +587,24 @@ class FenetrePrincipale(QMainWindow):
                     border-top: 1px solid #D1D5DB;
                 }
             """)
-
             self.statusBar().showMessage("Mode clair activé")
 
     def changer_theme(self) -> None:
-        """
-        Bascule entre mode sombre et mode clair.
-        """
         self.mode_sombre = self.action_mode_sombre.isChecked()
         self.appliquer_theme_jeu()
 
     def afficher_page_menu(self) -> None:
-        """
-        Revient au menu principal.
-        """
         self.stack.setCurrentWidget(self.page_menu)
         self.statusBar().showMessage("Menu principal")
 
     def afficher_page_jeu(self) -> None:
-        """
-        Affiche l'écran de jeu.
-        """
         self.stack.setCurrentWidget(self.page_jeu)
         self.statusBar().showMessage("Écran de jeu")
 
-    def lancer_nouvelle_partie(self) -> None:
-        """
-        Lance une nouvelle partie.
-        Pour l'instant, on affiche l'écran de jeu.
-        Si le contrôleur possède une méthode nouvelle_partie, elle sera appelée.
-        """
-        self.afficher_page_jeu()
-
-        methode = getattr(self.controleur, "nouvelle_partie", None)
-        if callable(methode):
-            methode()
-
     def ouvrir_options(self) -> None:
-        """
-        Ouvre une petite boîte de dialogue pour changer le thème.
-        """
         boite = QMessageBox(self)
         boite.setWindowTitle("Options")
-        boite.setText(
-            "Souhaites-tu activer ou désactiver le mode sombre ?"
-        )
+        boite.setText("Souhaites-tu activer ou désactiver le mode sombre ?")
 
         boite.setStandardButtons(
             QMessageBox.StandardButton.Yes |
@@ -561,10 +629,6 @@ class FenetrePrincipale(QMainWindow):
             self.appliquer_theme_jeu()
 
     def _appeler_controleur(self, nom_methode: str, *args):
-        """
-        Appelle une méthode du contrôleur seulement si elle existe.
-        Cela évite que l'interface plante pendant le développement.
-        """
         methode = getattr(self.controleur, nom_methode, None)
 
         if callable(methode):
@@ -587,8 +651,8 @@ class FenetrePrincipale(QMainWindow):
         )
 
         if filepath:
-            self.statusBar().showMessage(f"Grille chargée : {filepath}")
-            self._appeler_controleur("charger_grille", filepath)
+            self.statusBar().showMessage(f"Chargement : {filepath}")
+            QTimer.singleShot(0, lambda: self._appeler_controleur("charger_grille", filepath))
 
     def action_sauvegarder(self) -> None:
         filepath, _ = QFileDialog.getSaveFileName(
@@ -606,6 +670,7 @@ class FenetrePrincipale(QMainWindow):
         resultat = self._appeler_controleur("verifier_grille")
 
         if resultat is True:
+            self.composant_grille.effacer_erreurs()
             self.statusBar().showMessage("La grille est correcte.")
             QMessageBox.information(self, "Vérification", "La grille est correcte.")
 
@@ -613,9 +678,22 @@ class FenetrePrincipale(QMainWindow):
             self.statusBar().showMessage("La grille contient encore des erreurs.")
             QMessageBox.warning(self, "Vérification", "La grille contient encore des erreurs.")
 
+        else:
+            QMessageBox.information(self, "Vérification", "Aucune grille n'est chargée.")
+
     def action_resoudre(self) -> None:
+        reponse = QMessageBox.question(
+            self,
+            "Résoudre",
+            "Le solveur peut prendre du temps. Voulez-vous continuer ?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reponse != QMessageBox.StandardButton.Yes:
+            return
+
         self.statusBar().showMessage("Résolution en cours...")
-        self._appeler_controleur("resoudre_grille")
+        QTimer.singleShot(0, lambda: self._appeler_controleur("resoudre_grille"))
 
     def action_reinitialiser(self) -> None:
         reponse = QMessageBox.question(
@@ -645,7 +723,7 @@ class FenetrePrincipale(QMainWindow):
             "Règles du Néonaure :\n\n"
             "1. Un chiffre par case.\n"
             "2. Un chiffre doit être entouré de chiffres différents, y compris en diagonale.\n"
-            "3. Un motif de N cases, repéré en traits gras, doit comporter tous les chiffres de 1 à N."
+            "3. Un motif de N cases doit comporter tous les chiffres de 1 à N."
         )
 
         QMessageBox.information(self, "Règles du jeu", regles)
